@@ -3,6 +3,7 @@ mod utils;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::__rt::std::error::Error;
 use core::fmt;
+use crate::utils::random_int;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -33,7 +34,11 @@ pub struct Map {
     width: u32,
     cells: Vec<u32>,
     game_over: bool,
+    meat: Option<(u32, u32)>,
 }
+
+#[wasm_bindgen]
+pub struct MeatPositionTuple(pub u32, pub u32);
 
 impl Map {
     fn get_index(&self, row: u32, column: u32) -> Result<u32, &str> {
@@ -58,10 +63,19 @@ impl Map {
         self.cells.as_ptr()
     }
 
+    pub fn meat_position(&self) -> MeatPositionTuple {
+        match self.meat {
+            Some(row) => {
+                MeatPositionTuple(row.0, row.1)
+            }
+            _ => MeatPositionTuple(0, 0)
+        }
+    }
+
     pub fn new() -> Map {
         let height = 50;
         let width = 50;
-        let mut cells: Vec<u32> = (0..height * width)
+        let cells: Vec<u32> = (0..height * width)
             .map(|i| -> u32 {
                 return if { ((height * width) / 2 + (width / 2)) == i } { 1 } else { 0 };
             })
@@ -72,6 +86,22 @@ impl Map {
             width,
             cells,
             game_over: false,
+            meat: None,
+        };
+    }
+
+    fn set_meat(&self, curr_row: u32, curr_col: u32) -> (u32, u32) {
+        return match self.meat {
+            Some((row, col)) => {
+                if (row == curr_row) & (col == curr_col) {
+                    (random_int(self.height), random_int(self.height))
+                } else {
+                    (row, col)
+                }
+            }
+            None => {
+                (random_int(self.height), random_int(self.height))
+            }
         };
     }
 
@@ -82,7 +112,7 @@ impl Map {
             for col in 0..self.width {
                 let idx = match self.get_index(row, col) {
                     Ok(idx) => idx as usize,
-                    Err(error) => {
+                    Err(_error) => {
                         self.game_over = true;
                         panic!("Game over!")
                     }
@@ -97,6 +127,8 @@ impl Map {
                     Direction::Up => { self.handle_step(next.as_mut(), row - 1, col) }
                     Direction::Down => { self.handle_step(next.as_mut(), row + 1, col) }
                 }
+
+                self.meat = Option::from(self.set_meat(row, col));
             }
         }
 
@@ -106,7 +138,7 @@ impl Map {
     fn handle_step(&mut self, next_cells: &mut Vec<u32>, row: u32, column: u32) {
         let idx = match self.get_index(row, column) {
             Ok(idx) => idx as usize,
-            Err(error) => {
+            Err(_error) => {
                 self.game_over = true;
                 panic!("Game over!")
             }
