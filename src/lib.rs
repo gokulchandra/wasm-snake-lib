@@ -2,7 +2,6 @@ mod utils;
 
 use crate::utils::random_int;
 use core::fmt;
-use wasm_bindgen::__rt::std::error::Error;
 use wasm_bindgen::prelude::*;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -52,6 +51,7 @@ pub struct MeatPositionTuple(pub u32, pub u32);
 impl Map {
     fn get_index(&self, row: u32, column: u32) -> Result<u32, &str> {
         if !(0..self.height).contains(&row) || !(0..self.width).contains(&column) {
+            log!("row {} col {}", row, column);
             return Result::Err("Out of bounds");
         }
         return Ok((row * self.width) + column);
@@ -87,17 +87,15 @@ impl Map {
         let height = 50;
         let width = 50;
         let mut snake_cell = SnakeCell {
-            position: (0, 0),
+            position: (26, 25),
             direction: None,
             turn: None,
         };
         let cells: Vec<u32> = (0..height * width)
             .map(|i| -> u32 {
-                return if { ((height * width) / 2 + (width / 2)) == i } {
-                    snake_cell.position = (width, height);
-                    1
-                } else {
-                    0
+                return match i {
+                    1325 => 1,
+                    _ => 0
                 };
             })
             .collect();
@@ -135,55 +133,110 @@ impl Map {
     }
 
     pub fn tick(&mut self, direction: Direction) {
-        let mut next = self.cells.clone();
+        let mut next_cells = self.cells.clone();
+        let mut next_snake: Vec<SnakeCell> = vec![];
 
-        for row in 0..self.height {
-            for col in 0..self.width {
-                let idx = match self.get_index(row, col) {
-                    Ok(idx) => idx as usize,
-                    Err(_error) => {
-                        self.game_over = true;
-                        panic!("Game over!")
-                    }
-                };
-
-                let cell = self.cells[idx];
-                if cell == 0 {
-                    continue;
+        for snake_cell in self.snake.as_slice() {
+            let row = snake_cell.position.0;
+            let column = snake_cell.position.1;
+            let idx = match self.get_index(row, column) {
+                Ok(idx) => idx as usize,
+                Err(_error) => {
+                    log!("Step Eerrror");
+                    // self.game_over = true;
+                    panic!("Game over!")
                 }
-                next[idx] = 0;
-                match direction {
-                    Direction::Left => self.handle_step(next.as_mut(), row, col - 1),
-                    Direction::Right => self.handle_step(next.as_mut(), row, col + 1),
-                    Direction::Up => self.handle_step(next.as_mut(), row - 1, col),
-                    Direction::Down => self.handle_step(next.as_mut(), row + 1, col),
-                }
+            };
 
-                match self.meat {
-                    Some((meat_row, meat_col)) => {
-                        if (meat_row == row) & (meat_col == col) {
-                            self.score_meat(row, col, direction)
-                        }
+            next_cells[idx] = 0;
+
+            let (next_row, next_column) = self.handle_step(next_cells.as_mut(), row, column, direction);
+
+            next_snake.push(SnakeCell {
+                position: (next_row, next_column),
+                direction: Some(direction),
+                turn: None,
+            });
+
+            match self.meat {
+                Some((meat_row, meat_column)) => {
+                    if (meat_row == row) & (meat_column == column) {
+                        self.meat = Option::from((random_int(self.height), random_int(self.height)));
+                        next_snake.push(SnakeCell {
+                            position: (row, column),
+                            direction: Some(direction),
+                            turn: None,
+                        });
+                        next_cells[idx] = 1;
                     }
-                    None => {
-                        self.meat = Option::from((random_int(self.height), random_int(self.width)));
-                    }
+                }
+                None => {
+                    self.meat = Option::from((random_int(self.height), random_int(self.width)));
                 }
             }
         }
-
-        self.cells = next;
+        self.cells = next_cells;
+        self.snake = next_snake;
     }
 
-    fn handle_step(&mut self, next_cells: &mut Vec<u32>, row: u32, column: u32) {
-        let idx = match self.get_index(row, column) {
+    // pub fn tick(&mut self, direction: Direction) {
+    //     let mut next = self.cells.clone();
+    //
+    //     for row in 0..self.height {
+    //         for col in 0..self.width {
+    //             let idx = match self.get_index(row, col) {
+    //                 Ok(idx) => idx as usize,
+    //                 Err(_error) => {
+    //                     self.game_over = true;
+    //                     panic!("Game over!")
+    //                 }
+    //             };
+    //
+    //             let cell = self.cells[idx];
+    //             if cell == 0 {
+    //                 continue;
+    //             }
+    //             next[idx] = 0;
+    //             match direction {
+    //                 Direction::Left => self.handle_step(next.as_mut(), row, col - 1),
+    //                 Direction::Right => self.handle_step(next.as_mut(), row, col + 1),
+    //                 Direction::Up => self.handle_step(next.as_mut(), row - 1, col),
+    //                 Direction::Down => self.handle_step(next.as_mut(), row + 1, col),
+    //             }
+    //
+    //             match self.meat {
+    //                 Some((meat_row, meat_col)) => {
+    //                     if (meat_row == row) & (meat_col == col) {
+    //                         self.score_meat(row, col, direction)
+    //                     }
+    //                 }
+    //                 None => {
+    //                     self.meat = Option::from((random_int(self.height), random_int(self.width)));
+    //                 }
+    //             }
+    //         }
+    //     }
+    //
+    //     self.cells = next;
+    // }
+
+    fn handle_step(&self, next_cells: &mut Vec<u32>, row: u32, column: u32, direction: Direction) -> (u32, u32) {
+        let (next_row, next_col) = match direction {
+            Direction::Left => (row, column - 1),
+            Direction::Right => (row, column + 1),
+            Direction::Up => (row - 1, column),
+            Direction::Down => (row + 1, column),
+        };
+
+        let idx = match self.get_index(next_row, next_col) {
             Ok(idx) => idx as usize,
             Err(_error) => {
-                self.game_over = true;
+                // self.game_over = true;
                 panic!("Game over!")
             }
         };
 
-        next_cells[idx] = 1
+        next_cells[idx] = 1;
+        return (next_row, next_col);
     }
 }
